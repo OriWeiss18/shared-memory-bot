@@ -2,8 +2,13 @@ from fastapi import FastAPI, Request
 
 from app.database import supabase
 from app.whatsapp import extract_text_message
-from app.repository import save_text_item
+from app.repository import (
+    save_text_item,
+    get_or_create_user,
+    get_or_create_space,
+)
 from app.ai import classify_intent
+from app.search import search_items
 
 app = FastAPI()
 
@@ -57,7 +62,6 @@ async def whatsapp_webhook(request: Request):
 
     # Ask Gemini what the user wants to do
     intent_result = classify_intent(message["text"])
-
     intent = intent_result["intent"]
 
     print("Intent:")
@@ -87,10 +91,27 @@ async def whatsapp_webhook(request: Request):
     # SEARCH
     # -------------------------
     if intent == "SEARCH":
+        user = get_or_create_user(message["sender"])
+        space_id = get_or_create_space(user["id"])
+
+        search_query = intent_result["search_query"]
+
+        results = search_items(
+            space_id=space_id,
+            query=search_query,
+        )
+
+        print("Search query:")
+        print(search_query)
+
+        print("Search results:")
+        print(results)
+
         return {
             "status": "ok",
             "intent": "SEARCH",
-            "search_query": intent_result["search_query"],
+            "search_query": search_query,
+            "results": results,
         }
 
     return {
