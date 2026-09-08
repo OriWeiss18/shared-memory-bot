@@ -62,21 +62,33 @@ def save_text_item(
     sender: str,
     message_id: str,
     text: str,
+    enrichment: dict | None = None,
 ):
     user = get_or_create_user(sender)
     space_id = get_or_create_space(user["id"])
 
+    item_data = {
+        "space_id": space_id,
+        "sender_user_id": user["id"],
+        "source_platform": "whatsapp",
+        "source_message_id": message_id,
+        "source_type": "text",
+        "original_text": text,
+        "processing_status": "pending",
+    }
+
+    if enrichment:
+        item_data.update({
+            "title": enrichment.get("title"),
+            "summary": enrichment.get("summary"),
+            "category": enrichment.get("category"),
+            "tags": enrichment.get("tags", []),
+            "processing_status": "processed",
+        })
+
     response = (
         supabase.table("items")
-        .insert({
-            "space_id": space_id,
-            "sender_user_id": user["id"],
-            "source_platform": "whatsapp",
-            "source_message_id": message_id,
-            "source_type": "text",
-            "original_text": text,
-            "processing_status": "pending",
-        })
+        .insert(item_data)
         .execute()
     )
 

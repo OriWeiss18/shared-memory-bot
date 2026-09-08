@@ -7,7 +7,7 @@ from app.repository import (
     get_or_create_user,
     get_or_create_space,
 )
-from app.ai import classify_intent
+from app.ai import classify_intent, enrich_text_item
 from app.search import search_items
 
 app = FastAPI()
@@ -71,10 +71,16 @@ async def whatsapp_webhook(request: Request):
     # SAVE
     # -------------------------
     if intent == "SAVE":
+        enrichment = enrich_text_item(message["text"])
+
+        print("AI enrichment:")
+        print(enrichment)
+
         saved_item = save_text_item(
             sender=message["sender"],
             message_id=message["message_id"],
             text=message["text"],
+            enrichment=enrichment,
         )
 
         print("Saved item:")
@@ -85,6 +91,7 @@ async def whatsapp_webhook(request: Request):
             "intent": "SAVE",
             "message": "Saved",
             "item_id": saved_item["id"],
+            "enrichment": enrichment,
         }
 
     # -------------------------
