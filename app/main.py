@@ -1,14 +1,19 @@
 from fastapi import FastAPI, Request
 
-from app.database import supabase
-from app.whatsapp import extract_text_message
-from app.repository import (
-    save_text_item,
-    get_or_create_user,
-    get_or_create_space,
-)
 from app.ai import classify_intent, enrich_text_item
-from app.search import search_items
+from app.database import supabase
+from app.embeddings import (
+    build_item_search_text,
+    generate_item_embedding,
+)
+from app.repository import (
+    get_or_create_space,
+    get_or_create_user,
+    save_text_item,
+    backfill_missing_embeddings,
+)
+from app.search import find_best_match
+from app.whatsapp import extract_text_message
 
 app = FastAPI()
 
@@ -48,6 +53,20 @@ def intent_test(text: str):
     return classify_intent(text)
 
 
+@app.get("/embedding-test")
+def embedding_test():
+    embedding = generate_item_embedding(
+        text="מתכון לשקשוקה עם עגבניות וביצים",
+        title="מתכון לשקשוקה",
+    )
+
+    return {
+        "status": "ok",
+        "dimensions": len(embedding),
+        "first_values": embedding[:5],
+    }
+
+
 @app.post("/webhook")
 async def whatsapp_webhook(request: Request):
     payload = await request.json()
@@ -76,11 +95,25 @@ async def whatsapp_webhook(request: Request):
         print("AI enrichment:")
         print(enrichment)
 
+        search_text = build_item_search_text(
+            original_text=message["text"],
+            title=enrichment.get("title"),
+            summary=enrichment.get("summary"),
+            category=enrichment.get("category"),
+            tags=enrichment.get("tags", []),
+        )
+
+        embedding = generate_item_embedding(
+            text=search_text,
+            title=enrichment.get("title"),
+        )
+
         saved_item = save_text_item(
             sender=message["sender"],
             message_id=message["message_id"],
             text=message["text"],
             enrichment=enrichment,
+            embedding=embedding,
         )
 
         print("Saved item:")
@@ -103,7 +136,7 @@ async def whatsapp_webhook(request: Request):
 
         search_query = intent_result["search_query"]
 
-        results = search_items(
+        best_match = find_best_match(
             space_id=space_id,
             query=search_query,
         )
@@ -111,17 +144,32 @@ async def whatsapp_webhook(request: Request):
         print("Search query:")
         print(search_query)
 
-        print("Search results:")
-        print(results)
+        print("Best match:")
+        print(best_match)
+
+        if best_match is None:
+            return {
+                "status": "ok",
+                "intent": "SEARCH",
+                "search_query": search_query,
+                "found": False,
+                "message": "No relevant item found",
+            }
 
         return {
             "status": "ok",
             "intent": "SEARCH",
             "search_query": search_query,
-            "results": results,
+            "found": True,
+            "result": best_match,
         }
 
+@app.post("/backfill-embeddings")
+def backfill_embeddings():
+    updated = backfill_missing_embeddings()
+
     return {
-        "status": "error",
-        "message": "Unknown intent",
+        "status": "ok",
+        "updated_count": len(updated),
+        "updated_items": updated,
     }

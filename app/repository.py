@@ -1,5 +1,5 @@
 from app.database import supabase
-
+from app.embeddings import build_item_search_text, generate_item_embedding
 
 def get_or_create_user(whatsapp_number: str):
     # Try to find an existing user
@@ -63,6 +63,7 @@ def save_text_item(
     message_id: str,
     text: str,
     enrichment: dict | None = None,
+    embedding: list[float] | None = None,
 ):
     user = get_or_create_user(sender)
     space_id = get_or_create_space(user["id"])
@@ -75,6 +76,7 @@ def save_text_item(
         "source_type": "text",
         "original_text": text,
         "processing_status": "pending",
+        "embedding": embedding,
     }
 
     if enrichment:
@@ -93,3 +95,42 @@ def save_text_item(
     )
 
     return response.data[0]
+
+def backfill_missing_embeddings():
+    response = (
+        supabase.table("items")
+        .select("*")
+        .is_("embedding", "null")
+        .execute()
+    )
+
+    items = response.data
+
+    updated = []
+
+    for item in items:
+        search_text = build_item_search_text(
+            original_text=item.get("original_text"),
+            title=item.get("title"),
+            summary=item.get("summary"),
+            category=item.get("category"),
+            tags=item.get("tags", []),
+        )
+
+        embedding = generate_item_embedding(
+            text=search_text,
+            title=item.get("title"),
+        )
+
+        (
+            supabase.table("items")
+            .update({
+                "embedding": embedding
+            })
+            .eq("id", item["id"])
+            .execute()
+        )
+
+        updated.append(item["id"])
+
+    return updated
