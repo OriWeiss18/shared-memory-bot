@@ -58,6 +58,22 @@ def get_or_create_space(user_id: str):
     return space_id
 
 
+def get_item_by_message_id(message_id: str):
+    response = (
+        supabase.table("items")
+        .select("*")
+        .eq("source_platform", "whatsapp")
+        .eq("source_message_id", message_id)
+        .limit(1)
+        .execute()
+    )
+
+    if response.data:
+        return response.data[0]
+
+    return None
+
+
 def save_text_item(
     sender: str,
     message_id: str,
