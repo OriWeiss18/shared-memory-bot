@@ -12,8 +12,10 @@ from app.repository import (
     save_text_item,
     backfill_missing_embeddings,
 )
+from app.retrieval import build_reply_from_item
 from app.search import find_best_match
 from app.whatsapp import extract_text_message
+
 
 app = FastAPI()
 
@@ -89,6 +91,7 @@ async def whatsapp_webhook(request: Request):
     # -------------------------
     # SAVE
     # -------------------------
+
     if intent == "SAVE":
         enrichment = enrich_text_item(message["text"])
 
@@ -130,6 +133,7 @@ async def whatsapp_webhook(request: Request):
     # -------------------------
     # SEARCH
     # -------------------------
+
     if intent == "SEARCH":
         user = get_or_create_user(message["sender"])
         space_id = get_or_create_space(user["id"])
@@ -156,13 +160,25 @@ async def whatsapp_webhook(request: Request):
                 "message": "No relevant item found",
             }
 
+        reply = build_reply_from_item(best_match)
+
+        print("Reply:")
+        print(reply)
+
         return {
             "status": "ok",
             "intent": "SEARCH",
             "search_query": search_query,
             "found": True,
             "result": best_match,
+            "reply": reply,
         }
+
+    return {
+        "status": "error",
+        "message": "Unsupported intent",
+    }
+
 
 @app.post("/backfill-embeddings")
 def backfill_embeddings():
