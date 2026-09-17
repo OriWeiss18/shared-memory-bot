@@ -27,19 +27,50 @@ def search_items(
     return response.data
 
 
+def infer_preferred_source_type(query: str) -> str | None:
+    lowered = query.lower()
+
+    url_terms = [
+        "קישור",
+        "לינק",
+        "url",
+        "link",
+    ]
+
+    if any(term in lowered for term in url_terms):
+        return "url"
+
+    return None
+
+
 def find_best_match(
     space_id: str,
     query: str,
+    preferred_source_type: str | None = None,
 ):
     results = search_items(
         space_id=space_id,
         query=query,
+        limit=10,
     )
 
     if not results:
         return None
 
-    best_result = results[0]
+    if preferred_source_type:
+        matching_type_results = [
+            item
+            for item in results
+            if item.get("source_type") == preferred_source_type
+        ]
+
+        if not matching_type_results:
+            return None
+
+        best_result = matching_type_results[0]
+
+    else:
+        best_result = results[0]
 
     if best_result["similarity"] < MIN_SIMILARITY:
         return None

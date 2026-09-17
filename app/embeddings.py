@@ -44,11 +44,12 @@ def generate_query_embedding(query: str) -> list[float]:
     return result.embeddings[0].values
 
 def build_item_search_text(
-    original_text: str | None,
-    title: str | None,
-    summary: str | None,
-    category: str | None,
-    tags: list[str] | None,
+    title: str | None = None,
+    category: str | None = None,
+    tags: list[str] | None = None,
+    summary: str | None = None,
+    content: str | None = None,
+    original_text: str | None = None,
 ) -> str:
     parts = []
 
@@ -64,7 +65,9 @@ def build_item_search_text(
     if summary:
         parts.append(f"Summary: {summary}")
 
-    if original_text:
-        parts.append(f"Content: {original_text}")
+    body = content if content is not None else original_text
+
+    if body:
+        parts.append(f"Content: {body}")
 
     return "\n".join(parts)

@@ -134,3 +134,45 @@ Saved content:
     )
 
     return _parse_json_response(response.text)
+
+
+def fallback_classify_intent(text: str) -> dict:
+    """
+    Lightweight fallback when Gemini intent classification is unavailable.
+    """
+
+    normalized = text.strip()
+    lowered = normalized.lower()
+
+    search_prefixes = [
+        "תמצא",
+        "תמצאי",
+        "תביא",
+        "תביאי",
+        "חפש",
+        "חפשי",
+        "שלח לי",
+        "שלחי לי",
+        "איפה",
+        "find ",
+        "search ",
+        "show me",
+        "send me",
+        "get me",
+    ]
+
+    is_search = any(
+        lowered.startswith(prefix)
+        for prefix in search_prefixes
+    )
+
+    if is_search:
+        return {
+            "intent": "SEARCH",
+            "search_query": normalized,
+        }
+
+    return {
+        "intent": "SAVE",
+        "search_query": None,
+    }
