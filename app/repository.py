@@ -75,34 +75,30 @@ def get_item_by_message_id(message_id: str):
 
 
 def save_text_item(
-    sender: str,
-    message_id: str,
-    text: str,
-    enrichment: dict | None = None,
-    embedding: list[float] | None = None,
+    space_id: str,
+    sender_user_id: str,
+    source_message_id: str,
+    original_text: str,
+    title: str | None,
+    summary: str | None,
+    category: str | None,
+    tags: list[str],
+    embedding: list[float],
 ):
-    user = get_or_create_user(sender)
-    space_id = get_or_create_space(user["id"])
-
     item_data = {
         "space_id": space_id,
-        "sender_user_id": user["id"],
+        "sender_user_id": sender_user_id,
         "source_platform": "whatsapp",
-        "source_message_id": message_id,
+        "source_message_id": source_message_id,
         "source_type": "text",
-        "original_text": text,
-        "processing_status": "pending",
+        "original_text": original_text,
+        "title": title,
+        "summary": summary,
+        "category": category,
+        "tags": tags,
         "embedding": embedding,
+        "processing_status": "processed",
     }
-
-    if enrichment:
-        item_data.update({
-            "title": enrichment.get("title"),
-            "summary": enrichment.get("summary"),
-            "category": enrichment.get("category"),
-            "tags": enrichment.get("tags", []),
-            "processing_status": "processed",
-        })
 
     response = (
         supabase.table("items")
@@ -150,3 +146,40 @@ def backfill_missing_embeddings():
         updated.append(item["id"])
 
     return updated
+
+
+def save_url_item(
+    space_id: str,
+    sender_user_id: str,
+    source_message_id: str,
+    original_url: str,
+    extracted_text: str,
+    title: str | None,
+    summary: str | None,
+    category: str | None,
+    tags: list[str],
+    embedding: list[float],
+):
+    item_data = {
+        "space_id": space_id,
+        "sender_user_id": sender_user_id,
+        "source_platform": "whatsapp",
+        "source_message_id": source_message_id,
+        "source_type": "url",
+        "original_url": original_url,
+        "extracted_text": extracted_text,
+        "title": title,
+        "summary": summary,
+        "category": category,
+        "tags": tags,
+        "embedding": embedding,
+        "processing_status": "processed",
+    }
+
+    response = (
+        supabase.table("items")
+        .insert(item_data)
+        .execute()
+    )
+
+    return response.data[0]
