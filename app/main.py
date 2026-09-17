@@ -1,4 +1,8 @@
-from fastapi import FastAPI, Request
+import os
+
+from dotenv import load_dotenv
+from fastapi import FastAPI, Query, Request
+from fastapi.responses import PlainTextResponse
 
 from app.ai import classify_intent, enrich_text_item
 from app.database import supabase
@@ -11,13 +15,19 @@ from app.repository import (
     get_or_create_user,
     save_text_item,
     backfill_missing_embeddings,
+    get_item_by_message_id,
 )
 from app.retrieval import build_reply_from_item
 from app.search import find_best_match
 from app.whatsapp import extract_text_message
+from app.whatsapp_client import send_text_message
 
 
 app = FastAPI()
+
+load_dotenv()
+
+WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
 
 
 @app.get("/")
@@ -69,6 +79,21 @@ def embedding_test():
     }
 
 
+@app.get("/webhook")
+def verify_whatsapp_webhook(
+    mode: str | None = Query(default=None, alias="hub.mode"),
+    verify_token: str | None = Query(default=None, alias="hub.verify_token"),
+    challenge: str | None = Query(default=None, alias="hub.challenge"),
+):
+    if mode == "subscribe" and verify_token == WHATSAPP_VERIFY_TOKEN:
+        return PlainTextResponse(content=challenge or "")
+
+    return PlainTextResponse(
+        content="Verification failed",
+        status_code=403,
+    )
+
+
 @app.post("/webhook")
 async def whatsapp_webhook(request: Request):
     payload = await request.json()
@@ -81,8 +106,38 @@ async def whatsapp_webhook(request: Request):
             "message": "No text message found",
         }
 
+    existing_item = get_item_by_message_id(message["message_id"])
+
+    if existing_item is not None:
+        print("Duplicate WhatsApp message ignored:", message["message_id"])
+
+        return {
+            "status": "ok",
+            "duplicate": True,
+            "item_id": existing_item["id"],
+        }
+
     # Ask Gemini what the user wants to do
-    intent_result = classify_intent(message["text"])
+    try:
+        intent_result = classify_intent(message["text"])
+    except Exception as exc:
+        print("AI error while classifying message:")
+        print(exc)
+
+        try:
+            send_text_message(
+                to=message["sender"],
+                text="יש כרגע עומס זמני בשירות ה-AI. נסי שוב בעוד דקה.",
+            )
+        except Exception as send_error:
+            print("Could not send temporary error message:")
+            print(send_error)
+
+        return {
+            "status": "ok",
+            "message": "AI temporarily unavailable",
+        }
+
     intent = intent_result["intent"]
 
     print("Intent:")
@@ -93,7 +148,21 @@ async def whatsapp_webhook(request: Request):
     # -------------------------
 
     if intent == "SAVE":
-        enrichment = enrich_text_item(message["text"])
+        try:
+            enrichment = enrich_text_item(message["text"])
+        except Exception as exc:
+            print("AI error while enriching item:")
+            print(exc)
+
+            send_text_message(
+                to=message["sender"],
+                text="יש כרגע עומס זמני בשירות ה-AI. נסי שוב בעוד דקה.",
+            )
+
+            return {
+                "status": "ok",
+                "message": "AI temporarily unavailable",
+            }
 
         print("AI enrichment:")
         print(enrichment)
@@ -119,8 +188,16 @@ async def whatsapp_webhook(request: Request):
             embedding=embedding,
         )
 
-        print("Saved item:")
-        print(saved_item)
+        print(
+            "Saved item:",
+            saved_item["id"],
+            saved_item.get("title"),
+        )
+
+        send_text_message(
+            to=message["sender"],
+            text=f"נשמר ✅\n{enrichment.get('title', 'פריט חדש')}",
+        )
 
         return {
             "status": "ok",
@@ -152,6 +229,11 @@ async def whatsapp_webhook(request: Request):
         print(best_match)
 
         if best_match is None:
+            send_text_message(
+                to=message["sender"],
+                text="לא מצאתי פריט מספיק מתאים למה שחיפשת.",
+            )
+
             return {
                 "status": "ok",
                 "intent": "SEARCH",
@@ -164,6 +246,15 @@ async def whatsapp_webhook(request: Request):
 
         print("Reply:")
         print(reply)
+
+        if reply["type"] == "text" and reply["content"]:
+            whatsapp_response = send_text_message(
+                to=message["sender"],
+                text=reply["content"],
+            )
+
+            print("WhatsApp response:")
+            print(whatsapp_response)
 
         return {
             "status": "ok",
