@@ -22,6 +22,7 @@ from app.repository import (
     backfill_missing_embeddings,
     get_item_by_message_id,
     save_url_item,
+    join_space_by_code,
 )
 from app.retrieval import build_reply_from_item
 from app.search import (
@@ -124,6 +125,54 @@ async def whatsapp_webhook(request: Request):
             "status": "ok",
             "duplicate": True,
             "item_id": existing_item["id"],
+        }
+
+    text = message["text"].strip()
+
+    # -------------------------
+    # JOIN SHARED SPACE
+    # -------------------------
+
+    if text.lower().startswith("/join "):
+        invite_code = text.split(maxsplit=1)[1].strip()
+
+        user = get_or_create_user(message["sender"])
+
+        space = join_space_by_code(
+            user_id=user["id"],
+            invite_code=invite_code,
+        )
+
+        if space is None:
+            send_text_message(
+                to=message["sender"],
+                text="קוד ההזמנה לא נמצא.",
+            )
+
+            return {
+                "status": "ok",
+                "action": "join_space",
+                "joined": False,
+            }
+
+        notification_sent = True
+
+        try:
+            send_text_message(
+                to=message["sender"],
+                text=f"הצטרפת למרחב המשותף ✅\n{space['name']}",
+            )
+        except Exception as send_error:
+            notification_sent = False
+            print("Could not send join confirmation:")
+            print(send_error)
+
+        return {
+            "status": "ok",
+            "action": "join_space",
+            "joined": True,
+            "space_id": space["id"],
+            "notification_sent": notification_sent,
         }
 
     # Ask Gemini what the user wants to do
