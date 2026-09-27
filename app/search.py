@@ -26,9 +26,19 @@ def search_items(
 
     return response.data
 
-
 def infer_preferred_source_type(query: str) -> str | None:
     lowered = query.lower()
+
+    image_terms = [
+        "תמונה",
+        "תמונות",
+        "צילום",
+        "צילמתי",
+        "תצלום",
+        "image",
+        "photo",
+        "picture",
+    ]
 
     url_terms = [
         "קישור",
@@ -36,6 +46,9 @@ def infer_preferred_source_type(query: str) -> str | None:
         "url",
         "link",
     ]
+
+    if any(term in lowered for term in image_terms):
+        return "image"
 
     if any(term in lowered for term in url_terms):
         return "url"

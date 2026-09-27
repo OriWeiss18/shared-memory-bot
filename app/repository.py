@@ -221,6 +221,74 @@ def save_url_item(
 
     return response.data[0]
 
+def build_image_item_data(
+    space_id: str,
+    sender_user_id: str,
+    source_message_id: str,
+    storage_path: str,
+    mime_type: str,
+    title: str | None,
+    summary: str | None,
+    category: str | None,
+    tags: list[str],
+    description: str | None,
+    extracted_text: str | None,
+    embedding: list[float],
+):
+    return {
+        "space_id": space_id,
+        "sender_user_id": sender_user_id,
+        "source_platform": "whatsapp",
+        "source_message_id": source_message_id,
+        "source_type": "image",
+        "storage_path": storage_path,
+        "mime_type": mime_type,
+        "title": title,
+        "summary": summary,
+        "category": category,
+        "tags": tags,
+        "image_description": description,
+        "extracted_text": extracted_text,
+        "embedding": embedding,
+        "processing_status": "processed",
+    }
+
+def save_image_item(
+    space_id: str,
+    sender_user_id: str,
+    source_message_id: str,
+    storage_path: str,
+    mime_type: str,
+    title: str | None,
+    summary: str | None,
+    category: str | None,
+    tags: list[str],
+    description: str | None,
+    extracted_text: str | None,
+    embedding: list[float],
+):
+    item_data = build_image_item_data(
+        space_id=space_id,
+        sender_user_id=sender_user_id,
+        source_message_id=source_message_id,
+        storage_path=storage_path,
+        mime_type=mime_type,
+        title=title,
+        summary=summary,
+        category=category,
+        tags=tags,
+        description=description,
+        extracted_text=extracted_text,
+        embedding=embedding,
+    )
+
+    response = (
+        supabase.table("items")
+        .insert(item_data)
+        .execute()
+    )
+
+    return response.data[0]
 
 def add_user_to_space(
     user_id: str,

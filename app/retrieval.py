@@ -13,6 +13,14 @@ def build_reply_from_item(item: dict) -> dict:
             "content": item.get("original_url"),
         }
 
+    if source_type == "image":
+        return {
+            "type": "image",
+            "storage_path": item.get("storage_path"),
+            "mime_type": item.get("mime_type"),
+            "caption": item.get("title"),
+        }
+
     return {
         "type": "unsupported",
         "content": None,
