@@ -19,6 +19,7 @@ from app.repository import (
     get_or_create_space,
     get_or_create_user,
     save_text_item,
+    save_image_item,
     backfill_missing_embeddings,
     get_item_by_message_id,
     save_url_item,
@@ -29,8 +30,21 @@ from app.search import (
     find_best_match,
     infer_preferred_source_type,
 )
-from app.whatsapp import extract_text_message
-from app.whatsapp_client import send_text_message
+from app.ingestion import prepare_image_item
+from app.storage import (
+    build_image_storage_path,
+    download_image,
+    upload_image,
+)
+from app.whatsapp import (
+    extract_image_message,
+    extract_text_message,
+)
+from app.whatsapp_client import (
+    download_media,
+    send_image_message,
+    send_text_message,
+)
 
 
 app = FastAPI()
@@ -103,23 +117,28 @@ def verify_whatsapp_webhook(
         status_code=403,
     )
 
-
 @app.post("/webhook")
 async def whatsapp_webhook(request: Request):
     payload = await request.json()
 
-    message = extract_text_message(payload)
+    text_message = extract_text_message(payload)
+    image_message = extract_image_message(payload)
+
+    message = image_message or text_message
 
     if message is None:
         return {
             "status": "ok",
-            "message": "No text message found",
+            "message": "No supported message found",
         }
 
     existing_item = get_item_by_message_id(message["message_id"])
 
     if existing_item is not None:
-        print("Duplicate WhatsApp message ignored:", message["message_id"])
+        print(
+            "Duplicate WhatsApp message ignored:",
+            message["message_id"],
+        )
 
         return {
             "status": "ok",
@@ -127,6 +146,91 @@ async def whatsapp_webhook(request: Request):
             "item_id": existing_item["id"],
         }
 
+    # -------------------------
+    # IMAGE SAVE
+    # -------------------------
+
+    if image_message is not None:
+        user = get_or_create_user(
+            image_message["sender"]
+        )
+
+        space_id = get_or_create_space(
+            user["id"]
+        )
+
+        try:
+            image_bytes = download_media(
+                image_message["media_id"]
+            )
+
+            prepared = prepare_image_item(
+                image_bytes=image_bytes,
+                mime_type=image_message["mime_type"],
+            )
+
+            storage_path = build_image_storage_path(
+                space_id=space_id,
+                mime_type=image_message["mime_type"],
+            )
+
+            upload_image(
+                image_bytes=image_bytes,
+                storage_path=storage_path,
+                mime_type=image_message["mime_type"],
+            )
+
+            saved_item = save_image_item(
+                space_id=space_id,
+                sender_user_id=user["id"],
+                source_message_id=image_message["message_id"],
+                storage_path=storage_path,
+                mime_type=image_message["mime_type"],
+                title=prepared["title"],
+                summary=prepared["summary"],
+                category=prepared["category"],
+                tags=prepared["tags"],
+                description=prepared["description"],
+                extracted_text=prepared["extracted_text"],
+                embedding=prepared["embedding"],
+            )
+
+            send_text_message(
+                to=image_message["sender"],
+                text=(
+                    f"נשמרה תמונה ✅\n"
+                    f"{prepared['title']}"
+                ),
+            )
+
+            return {
+                "status": "ok",
+                "intent": "SAVE",
+                "source_type": "image",
+                "item_id": saved_item["id"],
+            }
+
+        except Exception as exc:
+            print("Image processing error:")
+            print(exc)
+
+            try:
+                send_text_message(
+                    to=image_message["sender"],
+                    text="לא הצלחתי לשמור את התמונה.",
+                )
+            except Exception:
+                pass
+
+            return {
+                "status": "ok",
+                "saved": False,
+                "source_type": "image",
+                "reason": "image_processing_failed",
+            }
+
+    # From here onward we are handling text messages only.
+    message = text_message
     text = message["text"].strip()
 
     # -------------------------
@@ -134,9 +238,13 @@ async def whatsapp_webhook(request: Request):
     # -------------------------
 
     if text.lower().startswith("/join "):
-        invite_code = text.split(maxsplit=1)[1].strip()
+        invite_code = text.split(
+            maxsplit=1
+        )[1].strip()
 
-        user = get_or_create_user(message["sender"])
+        user = get_or_create_user(
+            message["sender"]
+        )
 
         space = join_space_by_code(
             user_id=user["id"],
@@ -160,11 +268,18 @@ async def whatsapp_webhook(request: Request):
         try:
             send_text_message(
                 to=message["sender"],
-                text=f"הצטרפת למרחב המשותף ✅\n{space['name']}",
+                text=(
+                    f"הצטרפת למרחב המשותף ✅\n"
+                    f"{space['name']}"
+                ),
             )
+
         except Exception as send_error:
             notification_sent = False
-            print("Could not send join confirmation:")
+
+            print(
+                "Could not send join confirmation:"
+            )
             print(send_error)
 
         return {
@@ -175,7 +290,10 @@ async def whatsapp_webhook(request: Request):
             "notification_sent": notification_sent,
         }
 
-    # Ask Gemini what the user wants to do
+    # -------------------------
+    # INTENT
+    # -------------------------
+
     url = extract_url(message["text"])
 
     if url:
@@ -183,15 +301,23 @@ async def whatsapp_webhook(request: Request):
             "intent": "SAVE",
             "search_query": None,
         }
+
     else:
         try:
-            intent_result = classify_intent(message["text"])
+            intent_result = classify_intent(
+                message["text"]
+            )
 
         except Exception as exc:
-            print("AI intent classification unavailable, using fallback:")
+            print(
+                "AI intent classification unavailable, "
+                "using fallback:"
+            )
             print(exc)
 
-            intent_result = fallback_classify_intent(message["text"])
+            intent_result = fallback_classify_intent(
+                message["text"]
+            )
 
     intent = intent_result["intent"]
 
@@ -203,24 +329,34 @@ async def whatsapp_webhook(request: Request):
     # -------------------------
 
     if intent == "SAVE":
-        user = get_or_create_user(message["sender"])
-        space_id = get_or_create_space(user["id"])
+        user = get_or_create_user(
+            message["sender"]
+        )
+
+        space_id = get_or_create_space(
+            user["id"]
+        )
 
         # -------------------------
         # URL SAVE
         # -------------------------
+
         if url:
             print("Detected URL:", url)
 
             try:
                 page = fetch_url_content(url)
+
             except Exception as exc:
                 print("URL fetch error:")
                 print(exc)
 
                 send_text_message(
                     to=message["sender"],
-                    text="לא הצלחתי לקרוא את הקישור הזה.",
+                    text=(
+                        "לא הצלחתי לקרוא את "
+                        "הקישור הזה."
+                    ),
                 )
 
                 return {
@@ -230,19 +366,29 @@ async def whatsapp_webhook(request: Request):
                 }
 
             enrichment_input = (
-                f"Page title: {page.get('title') or ''}\n\n"
-                f"Page content:\n{page['text']}"
+                f"Page title: "
+                f"{page.get('title') or ''}\n\n"
+                f"Page content:\n"
+                f"{page['text']}"
             )
 
             try:
-                enrichment = enrich_text_item(enrichment_input)
+                enrichment = enrich_text_item(
+                    enrichment_input
+                )
 
             except Exception as exc:
-                print("AI enrichment unavailable for URL, using fallback:")
+                print(
+                    "AI enrichment unavailable "
+                    "for URL, using fallback:"
+                )
                 print(exc)
 
                 enrichment = {
-                    "title": page.get("title") or "Saved link",
+                    "title": (
+                        page.get("title")
+                        or "Saved link"
+                    ),
                     "category": "Other",
                     "tags": [],
                     "summary": page["text"][:300],
@@ -259,7 +405,9 @@ async def whatsapp_webhook(request: Request):
                 content=page["text"],
             )
 
-            embedding = generate_item_embedding(search_text)
+            embedding = generate_item_embedding(
+                search_text
+            )
 
             saved_item = save_url_item(
                 space_id=space_id,
@@ -282,7 +430,10 @@ async def whatsapp_webhook(request: Request):
 
             send_text_message(
                 to=message["sender"],
-                text=f"נשמר ✅\n{enrichment.get('title', 'קישור חדש')}",
+                text=(
+                    f"נשמר ✅\n"
+                    f"{enrichment.get('title', 'קישור חדש')}"
+                ),
             )
 
             return {
@@ -295,20 +446,31 @@ async def whatsapp_webhook(request: Request):
         # -------------------------
         # NORMAL TEXT SAVE
         # -------------------------
+
         try:
-            enrichment = enrich_text_item(message["text"])
+            enrichment = enrich_text_item(
+                message["text"]
+            )
+
         except Exception as exc:
-            print("AI error while enriching item:")
+            print(
+                "AI error while enriching item:"
+            )
             print(exc)
 
             send_text_message(
                 to=message["sender"],
-                text="יש כרגע עומס זמני בשירות ה-AI. נסי שוב בעוד דקה.",
+                text=(
+                    "יש כרגע עומס זמני בשירות ה-AI. "
+                    "נסי שוב בעוד דקה."
+                ),
             )
 
             return {
                 "status": "ok",
-                "message": "AI temporarily unavailable",
+                "message": (
+                    "AI temporarily unavailable"
+                ),
             }
 
         print("AI enrichment:")
@@ -322,7 +484,9 @@ async def whatsapp_webhook(request: Request):
             content=message["text"],
         )
 
-        embedding = generate_item_embedding(search_text)
+        embedding = generate_item_embedding(
+            search_text
+        )
 
         saved_item = save_text_item(
             space_id=space_id,
@@ -344,7 +508,10 @@ async def whatsapp_webhook(request: Request):
 
         send_text_message(
             to=message["sender"],
-            text=f"נשמר ✅\n{enrichment.get('title', 'פריט חדש')}",
+            text=(
+                f"נשמר ✅\n"
+                f"{enrichment.get('title', 'פריט חדש')}"
+            ),
         )
 
         return {
@@ -359,12 +526,23 @@ async def whatsapp_webhook(request: Request):
     # -------------------------
 
     if intent == "SEARCH":
-        user = get_or_create_user(message["sender"])
-        space_id = get_or_create_space(user["id"])
+        user = get_or_create_user(
+            message["sender"]
+        )
 
-        search_query = intent_result["search_query"]
+        space_id = get_or_create_space(
+            user["id"]
+        )
 
-        preferred_source_type = infer_preferred_source_type(search_query)
+        search_query = intent_result[
+            "search_query"
+        ]
+
+        preferred_source_type = (
+            infer_preferred_source_type(
+                search_query
+            )
+        )
 
         print("Preferred source type:")
         print(preferred_source_type)
@@ -372,7 +550,9 @@ async def whatsapp_webhook(request: Request):
         best_match = find_best_match(
             space_id=space_id,
             query=search_query,
-            preferred_source_type=preferred_source_type,
+            preferred_source_type=(
+                preferred_source_type
+            ),
         )
 
         print("Search query:")
@@ -384,7 +564,10 @@ async def whatsapp_webhook(request: Request):
         if best_match is None:
             send_text_message(
                 to=message["sender"],
-                text="לא מצאתי פריט מספיק מתאים למה שחיפשת.",
+                text=(
+                    "לא מצאתי פריט מספיק מתאים "
+                    "למה שחיפשת."
+                ),
             )
 
             return {
@@ -392,21 +575,63 @@ async def whatsapp_webhook(request: Request):
                 "intent": "SEARCH",
                 "search_query": search_query,
                 "found": False,
-                "message": "No relevant item found",
+                "message": (
+                    "No relevant item found"
+                ),
             }
 
-        reply = build_reply_from_item(best_match)
+        reply = build_reply_from_item(
+            best_match
+        )
 
         print("Reply:")
         print(reply)
 
-        if reply["type"] == "text" and reply["content"]:
-            whatsapp_response = send_text_message(
-                to=message["sender"],
-                text=reply["content"],
+        if (
+            reply["type"] == "text"
+            and reply["content"]
+        ):
+            whatsapp_response = (
+                send_text_message(
+                    to=message["sender"],
+                    text=reply["content"],
+                )
             )
 
             print("WhatsApp response:")
+            print(whatsapp_response)
+
+        elif reply["type"] == "image":
+            storage_path = reply.get(
+                "storage_path"
+            )
+
+            mime_type = reply.get(
+                "mime_type"
+            )
+
+            if not storage_path or not mime_type:
+                raise RuntimeError(
+                    "Image search result is missing "
+                    "storage information"
+                )
+
+            image_bytes = download_image(
+                storage_path
+            )
+
+            whatsapp_response = (
+                send_image_message(
+                    to=message["sender"],
+                    image_bytes=image_bytes,
+                    mime_type=mime_type,
+                    caption=reply.get("caption"),
+                )
+            )
+
+            print(
+                "WhatsApp image response:"
+            )
             print(whatsapp_response)
 
         return {
