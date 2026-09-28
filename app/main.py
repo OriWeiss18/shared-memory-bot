@@ -45,9 +45,20 @@ from app.whatsapp_client import (
     send_image_message,
     send_text_message,
 )
+from pathlib import Path
+
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 
 app = FastAPI()
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+
+app.mount(
+    "/static",
+    StaticFiles(directory=WEB_DIR),
+    name="static",
+)
 
 load_dotenv()
 
@@ -66,6 +77,12 @@ def health():
     return {
         "status": "ok"
     }
+
+@app.get("/dashboard")
+def dashboard():
+    return FileResponse(
+        WEB_DIR / "index.html"
+    )
 
 
 @app.get("/db-test")

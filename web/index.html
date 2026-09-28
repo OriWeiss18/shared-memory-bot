@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Shared Memory</title>
+
+    <link
+        rel="stylesheet"
+        href="/static/styles.css"
+    >
+</head>
+
+<body>
+
+    <!-- =========================
+         TOP NAVIGATION
+    ========================== -->
+
+    <header class="topbar">
+        <div class="topbar-inner">
+
+            <a
+                href="/dashboard"
+                class="brand"
+                aria-label="Shared Memory"
+            >
+                <div class="brand-mark">
+                    M
+                </div>
+
+                <div class="brand-text">
+                    <span class="brand-name">
+                        Shared Memory
+                    </span>
+
+                    <span class="brand-subtitle">
+                        כל מה ששמרת, במקום אחד
+                    </span>
+                </div>
+            </a>
+
+            <div class="topbar-actions">
+                <div class="saved-counter">
+                    <span
+                        id="itemCount"
+                        class="saved-counter-number"
+                    >
+                        0
+                    </span>
+
+                    <span class="saved-counter-label">
+                        פריטים שמורים
+                    </span>
+                </div>
+            </div>
+
+        </div>
+    </header>
+
+
+    <!-- =========================
+         MAIN PAGE
+    ========================== -->
+
+    <main class="page-shell">
+
+        <!-- Hero / heading -->
+
+        <section class="hero">
+
+            <div class="hero-copy">
+                <p class="eyebrow">
+                    הזיכרון המשותף שלך
+                </p>
+
+                <h1>
+                    מה שמרת לאחרונה?
+                </h1>
+
+                <p class="hero-description">
+                    חפשי בין קישורים, תמונות, מסמכים,
+                    המלצות וכל דבר שבחרת לשמור.
+                </p>
+            </div>
+
+        </section>
+
+
+        <!-- =========================
+             SEARCH
+        ========================== -->
+
+        <section class="search-section">
+
+            <div class="search-box">
+
+                <div
+                    class="search-icon"
+                    aria-hidden="true"
+                >
+                    ⌕
+                </div>
+
+                <input
+                    id="searchInput"
+                    class="search-input"
+                    type="search"
+                    placeholder="חפשי למשל: השמפו, המלון בליסבון, מתכון לפסטה..."
+                    autocomplete="off"
+                    aria-label="חיפוש בפריטים השמורים"
+                >
+
+                <button
+                    id="clearSearch"
+                    class="clear-search-button"
+                    type="button"
+                    aria-label="ניקוי החיפוש"
+                    title="ניקוי החיפוש"
+                    hidden
+                >
+                    ×
+                </button>
+
+            </div>
+
+        </section>
+
+
+        <!-- =========================
+             CATEGORY FILTERS
+        ========================== -->
+
+        <section class="filters-section">
+
+            <div class="section-heading-row">
+
+                <div>
+                    <h2>
+                        כל הזיכרונות
+                    </h2>
+
+                    <p id="resultsDescription">
+                        מציג את כל הפריטים השמורים
+                    </p>
+                </div>
+
+            </div>
+
+
+            <div
+                id="categoryFilters"
+                class="category-filters"
+                role="group"
+                aria-label="סינון לפי קטגוריה"
+            >
+                <!--
+                    Category buttons are created
+                    dynamically by app.js
+                -->
+            </div>
+
+        </section>
+
+
+        <!-- =========================
+             ITEMS GRID
+        ========================== -->
+
+        <section class="items-section">
+
+            <div
+                id="itemsGrid"
+                class="items-grid"
+            >
+                <!--
+                    Memory cards are created
+                    dynamically by app.js
+                -->
+            </div>
+
+
+            <!-- Empty state -->
+
+            <div
+                id="emptyState"
+                class="empty-state"
+                hidden
+            >
+                <div class="empty-state-icon">
+                    ⌕
+                </div>
+
+                <h3>
+                    לא מצאנו משהו מתאים
+                </h3>
+
+                <p>
+                    נסי חיפוש אחר או בחרי קטגוריה אחרת.
+                </p>
+
+                <button
+                    id="resetFilters"
+                    class="secondary-button"
+                    type="button"
+                >
+                    הציגי את כל הפריטים
+                </button>
+            </div>
+
+        </section>
+
+    </main>
+
+
+    <!-- =========================
+         ITEM DETAILS MODAL
+    ========================== -->
+
+    <div
+        id="itemModal"
+        class="modal"
+        aria-hidden="true"
+    >
+
+        <div
+            id="modalOverlay"
+            class="modal-overlay"
+        ></div>
+
+        <div
+            class="modal-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modalTitle"
+        >
+
+            <button
+                id="modalClose"
+                class="modal-close"
+                type="button"
+                aria-label="סגירה"
+            >
+                ×
+            </button>
+
+            <div
+                id="modalContent"
+                class="modal-content"
+            >
+                <!--
+                    Item details are created
+                    dynamically by app.js
+                -->
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- =========================
+         SCRIPT
+    ========================== -->
+
+    <script
+        src="/static/app.js"
+        defer
+    ></script>
+
+</body>
+</html>
