@@ -138,7 +138,8 @@ Saved content:
 
 def fallback_classify_intent(text: str) -> dict:
     """
-    Lightweight fallback when Gemini intent classification is unavailable.
+    Lightweight fallback when Gemini intent classification
+    is unavailable.
     """
 
     normalized = text.strip()
@@ -153,6 +154,8 @@ def fallback_classify_intent(text: str) -> dict:
         "חפשי",
         "שלח לי",
         "שלחי לי",
+        "תשלח",
+        "תשלחי",
         "איפה",
         "find ",
         "search ",
@@ -161,12 +164,41 @@ def fallback_classify_intent(text: str) -> dict:
         "get me",
     ]
 
-    is_search = any(
+    question_prefixes = [
+        "כמה",
+        "מתי",
+        "איך",
+        "למה",
+        "מי",
+        "איזה",
+        "איזו",
+        "אילו",
+        "האם",
+        "מה",
+        "באיזה",
+        "באיזו",
+        "what",
+        "how",
+        "when",
+        "why",
+        "who",
+        "which",
+    ]
+
+    is_search_command = any(
         lowered.startswith(prefix)
         for prefix in search_prefixes
     )
 
-    if is_search:
+    is_question = (
+        "?" in normalized
+        or any(
+            lowered.startswith(prefix)
+            for prefix in question_prefixes
+        )
+    )
+
+    if is_search_command or is_question:
         return {
             "intent": "SEARCH",
             "search_query": normalized,
