@@ -93,7 +93,7 @@ const modalContent = document.getElementById(
 async function loadItems() {
     try {
         const response = await fetch(
-            "/static/mock_items.json"
+            "/api/items"
         );
 
         if (!response.ok) {
@@ -117,8 +117,7 @@ async function loadItems() {
             <div class="empty-state">
                 <h3>לא הצלחנו לטעון את הפריטים</h3>
                 <p>
-                    ודאי שהשרת פועל ושקובץ
-                    mock_items.json נמצא בתיקיית web.
+                    ודאי שהשרת פועל ושהחיבור למסד הנתונים זמין.
                 </p>
             </div>
         `;
