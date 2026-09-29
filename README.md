@@ -1,3 +1,13 @@
+<p align="center">
+  <img src="docs/images/keeper-logo.png" alt="Keeper Logo" width="500"/>
+</p>
+
+<h2 align="center">Keeper - AI-Powered Shared Memory for Saving and Retrieving Everyday Information</h2>
+
+<p align="center">
+  <strong>Gaia Eldad and Ori Weiss</strong>
+</p>
+
 ### 1.1 Problem & Motivation
 
 In everyday life, people constantly come across useful information they want to keep: recipes, receipts, links, recommendations, images, screenshots, and more. However, this information is often scattered across chats and messages, making it difficult to find later, especially when users do not remember the exact wording, date, or format. Our goal was to create a more natural way to build a digital memory using **WhatsApp as the main interface**, since it is already part of our everyday communication and requires no new interaction habits. Instead of manually adding titles, categories, tags, or organizing content, users can simply send text, a link, or an image, and the system processes and organizes it automatically. Search is based on meaning rather than exact keyword matching, allowing users to ask naturally, for example, *“Where is the recipe with mushrooms that we saved?”* or *“Show me the receipt from the restaurant.”* The system also supports **shared memory spaces**, allowing multiple users to contribute to and retrieve information from the same shared collection.
@@ -70,6 +80,26 @@ Several parts of the implementation were refined after testing exposed concrete 
 
 The web dashboard provides a secondary interface for viewing the shared memory accumulated through WhatsApp. Although users only submit the raw content, the ingestion pipeline enriches each item with structured metadata such as titles, categories, summaries, and tags, allowing the dashboard to automatically organize the stored information without manual classification. The dashboard reads these structured items from Supabase and supports browsing, text search, category filtering, and detailed item views over the same shared memory.
 
+## 4. Demonstration
+
+The following examples demonstrate the main user flows of the system through WhatsApp, including saving different content types, retrieving the original stored content, and asking broader questions using RAG.
+
+<p align="center">
+  <img src="docs/screenshots/text-save-and-rag.jpg" alt="Saving text and asking questions through WhatsApp" width="30%"/>
+  <img src="docs/screenshots/image-retrieval-and-rag.jpg" alt="Image retrieval and RAG-based question" width="30%"/>
+  <img src="docs/screenshots/receipt-image-query.jpg" alt="Querying information extracted from an image" width="30%"/>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/url-save-and-retrieval.jpg" alt="Saving and retrieving a URL" width="30%"/>
+  <img src="docs/screenshots/image-and-url-save.jpg" alt="Saving image and URL content" width="30%"/>
+</p>
+
+The system answers only from information stored in the shared memory. If no relevant information is found, it returns an appropriate response instead of inventing an answer.
+
+<p align="center">
+  <img src="docs/screenshots/failed-retrieval.jpg" alt="Failed retrieval for information not stored in memory" width="30%"/>
+</p>
 
 
 ## 5. Conclusion
