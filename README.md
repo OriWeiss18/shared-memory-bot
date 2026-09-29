@@ -58,27 +58,76 @@ The system supports two main interaction flows: saving new information and retri
 
 ### 3.3 WhatsApp Integration & Message Handling
 
-The WhatsApp Cloud API serves as the system’s communication interface, while FastAPI exposes the webhook that receives and parses incoming events. Each message is associated with the relevant user and active shared space; commands and media types are handled directly, while Gemini-based intent classification distinguishes between SAVE and SEARCH requests, with rule-based heuristics as a fallback. The request is then routed to the relevant pipeline, and the response is returned through WhatsApp.
+The WhatsApp Cloud API serves as the main communication interface, with FastAPI handling incoming webhook events.
+
+- **Message identification** — Each message is associated with the relevant user and active shared space.
+- **Direct handling** — Commands and media types are detected and handled directly.
+- **Intent classification** — Gemini distinguishes between SAVE and SEARCH requests, with rule-based heuristics as a fallback.
+- **Routing** — The request is forwarded to the corresponding ingestion or retrieval pipeline.
+- **Response** — The result is returned to the user through WhatsApp.
 
 ### 3.4 Information Ingestion & Storage
 
-Each SAVE request follows a type-specific processing pipeline before being normalized into a common memory-item structure. Text is enriched with a title, summary, category, and tags; URLs are fetched and cleaned to extract their main content; and images are analyzed with Gemini Vision to generate a description and extract visible text. The content and generated metadata are combined into a unified searchable representation, encoded as a 768-dimensional document embedding, and stored with the item data in Supabase. Image binaries are stored separately in Supabase Storage.
+Each SAVE request follows a type-specific processing flow before being normalized into a common memory-item structure.
+
+- **Text** — Enriched with a title, summary, category, and tags.
+- **URLs** — The page is fetched and cleaned to extract its main content before enrichment.
+- **Images** — Gemini Vision generates a description and extracts visible text.
+- **Unified representation** — Content and generated metadata are combined into a common searchable representation.
+- **Embedding & storage** — A 768-dimensional document embedding and the structured item data are stored in Supabase, while image binaries are stored in Supabase Storage.
+
+#### Save Pipeline
+
+<p align="center">
+  <a href="docs/images/save-pipeline.png">
+    <img src="docs/images/save-pipeline.png" alt="Keeper Save Pipeline" width="100%"/>
+  </a>
+</p>
 
 ### 3.5 Semantic Search, Retrieval & RAG
 
-For a SEARCH request, the query is converted into a 768-dimensional query embedding and compared against stored document embeddings using vector similarity. Candidate items are ranked by similarity score, and results below a minimum relevance threshold are rejected. Deterministic signals, such as terms indicating a link or image, can further prefer the requested content type. Specific-item requests use direct retrieval, while broader questions retrieve multiple relevant items and pass them to Gemini as context for a RAG-based answer.
+SEARCH requests pass through a semantic retrieval pipeline:
+
+1. **Query embedding** — The query is converted into a 768-dimensional embedding.
+2. **Vector comparison** — It is compared against stored document embeddings using vector similarity.
+3. **Ranking & threshold** — Candidates are ranked by similarity score, and results below the minimum relevance threshold are rejected.
+4. **Type-aware refinement** — Terms indicating a link or image can prioritize the corresponding content type.
+5. **Response selection** — Specific-item requests use direct retrieval, while broader questions retrieve multiple relevant items and pass them to Gemini as context for a RAG-based answer.
+
+#### Search & RAG Pipeline
+
+<p align="center">
+  <a href="docs/images/search-rag-pipeline.png">
+    <img src="docs/images/search-rag-pipeline.png" alt="Keeper Search and RAG Pipeline" width="100%"/>
+  </a>
+</p>
 
 ### 3.6 Shared Spaces & Multi-User Memory
 
-Shared memory is implemented through `app_users`, `spaces`, and `space_members`, with each user also storing an `active_space_id`. A user may belong to multiple spaces, but SAVE and SEARCH operations are always scoped to the currently active space, so retrieval is limited to the relevant shared memory rather than the entire database. Users can join a space using `/join <invite_code>`, which creates the membership and sets that space as active.
+Shared memory is implemented through `app_users`, `spaces`, and `space_members`.
 
-### 3.7 Engineering Decisions & Iterative Improvements
+- Each user has an `active_space_id` and may belong to multiple spaces.
+- SAVE and SEARCH operations are scoped to the active space, isolating retrieval to the relevant shared memory.
+- `/join <invite_code>` creates the user's membership in a space and sets it as active.
+- Multiple users within the same space can save and retrieve information from the same shared memory.
 
-Several parts of the implementation were refined after testing exposed concrete failure cases. Duplicate WhatsApp events were handled by checking `source_message_id` before processing, while keeping the database uniqueness constraint to prevent duplicate memory items. URL extraction was improved by removing non-content HTML elements and prioritizing the main article content before generating embeddings. Retrieval was extended with type-aware rules after semantic similarity alone occasionally returned the correct topic but the wrong source type. In addition, Gemini `429/503` failures led us to add rule-based intent fallbacks and basic URL metadata extraction, allowing core flows to continue even when AI enrichment was temporarily unavailable.
+### 3.7 Web Dashboard
 
-### 3.8 Web Dashboard
+The Web Dashboard provides a structured view of the shared memory accumulated through WhatsApp.
 
-The web dashboard provides a secondary interface for viewing the shared memory accumulated through WhatsApp. Although users only submit the raw content, the ingestion pipeline enriches each item with structured metadata such as titles, categories, summaries, and tags, allowing the dashboard to automatically organize the stored information without manual classification. The dashboard reads these structured items from Supabase and supports browsing, text search, category filtering, and detailed item views over the same shared memory.
+- **Automatic organization** — Users submit only raw content, while the ingestion pipeline generates titles, categories, summaries, and tags automatically.
+- **Shared data source** — The dashboard reads the processed items directly from Supabase, using the same stored memory as the WhatsApp interface.
+- **Browsing & filtering** — Stored information can be browsed, searched, and filtered by category.
+- **Item details** — Users can open individual items to view their stored content and generated metadata.
+
+### 3.8 Engineering Decisions & Iterative Improvements
+
+Testing exposed several failure cases that led to targeted implementation improvements:
+
+- **Duplicate webhooks** — `source_message_id` is checked before processing, alongside a database uniqueness constraint, to prevent duplicate memory items.
+- **Noisy URL content** — Non-content HTML elements are removed and the main page content is prioritized before generating embeddings.
+- **Incorrect content type** — Type-aware retrieval was added after semantic similarity alone occasionally returned the correct topic but the wrong source type.
+- **AI availability** — Gemini `429/503` failures led to rule-based intent fallbacks and basic URL metadata extraction, allowing core flows to continue even when AI enrichment is temporarily unavailable.
 
 ## 4. Demonstration
 
