@@ -1,4 +1,5 @@
 import mimetypes
+import time
 from pathlib import Path
 
 from google import genai
@@ -77,18 +78,43 @@ Rules:
 - Do not include markdown or explanations.
 """
 
-    response = client.models.generate_content(
-        model="gemini-3.6-flash",
-        contents=[
-            types.Part.from_bytes(
-                data=image_bytes,
-                mime_type=mime_type,
-            ),
-            prompt,
-        ],
-    )
+    max_attempts = 3
 
-    return _parse_json_response(response.text)
+    for attempt in range(max_attempts):
+        try:
+            response = client.models.generate_content(
+                model="gemini-3.1-flash-lite",
+                contents=[
+                    types.Part.from_bytes(
+                        data=image_bytes,
+                        mime_type=mime_type,
+                    ),
+                    prompt,
+                ],
+            )
+
+            return _parse_json_response(response.text)
+
+        except Exception as exc:
+            error_text = str(exc)
+
+            is_temporary_error = (
+                "503" in error_text
+                or "UNAVAILABLE" in error_text
+                or "high demand" in error_text.lower()
+            )
+
+            if not is_temporary_error or attempt == max_attempts - 1:
+                raise
+
+            wait_seconds = 2 ** (attempt + 1)
+
+            print(
+                f"Gemini temporarily unavailable. "
+                f"Retrying in {wait_seconds} seconds..."
+            )
+
+            time.sleep(wait_seconds)
 
 
 def analyze_image_file(path: str) -> dict:
