@@ -25,10 +25,13 @@ from app.repository import (
     save_url_item,
     join_space_by_code,
 )
+from app.rag import answer_from_items, should_use_rag
 from app.retrieval import build_reply_from_item
 from app.search import (
+    MIN_SIMILARITY,
     find_best_match,
     infer_preferred_source_type,
+    search_items,
 )
 from app.ingestion import prepare_image_item
 from app.storage import (
@@ -564,13 +567,101 @@ async def whatsapp_webhook(request: Request):
         print("Preferred source type:")
         print(preferred_source_type)
 
-        best_match = find_best_match(
-            space_id=space_id,
-            query=search_query,
-            preferred_source_type=(
-                preferred_source_type
-            ),
-        )
+        use_rag = should_use_rag(text)
+
+        print("Use RAG:")
+        print(use_rag)
+
+        # -------------------------
+        # RAG QUESTION
+        # -------------------------
+
+        if use_rag:
+            matches = search_items(
+                space_id=space_id,
+                query=search_query,
+                limit=5,
+            )
+
+            if preferred_source_type:
+                matches = [
+                    item
+                    for item in matches
+                    if item.get("source_type")
+                    == preferred_source_type
+                ]
+
+            matches = [
+                item
+                for item in matches
+                if item.get("similarity", 0)
+                >= MIN_SIMILARITY
+            ][:3]
+
+            print("RAG matches:")
+            print(matches)
+
+            if not matches:
+                send_text_message(
+                    to=message["sender"],
+                    text=(
+                        "לא מצאתי מידע שמור "
+                        "שמתאים למה ששאלת."
+                    ),
+                )
+
+                return {
+                    "status": "ok",
+                    "intent": "SEARCH",
+                    "search_query": search_query,
+                    "found": False,
+                    "rag": True,
+                }
+
+            try:
+                answer = answer_from_items(
+                    question=text,
+                    items=matches,
+                )
+
+                send_text_message(
+                    to=message["sender"],
+                    text=answer,
+                )
+
+                print("RAG answer:")
+                print(answer)
+
+                return {
+                    "status": "ok",
+                    "intent": "SEARCH",
+                    "search_query": search_query,
+                    "found": True,
+                    "rag": True,
+                    "answer": answer,
+                }
+
+            except Exception as exc:
+                print(
+                    "RAG unavailable, "
+                    "returning best item:"
+                )
+                print(exc)
+
+                best_match = matches[0]
+
+        # -------------------------
+        # DIRECT SEARCH
+        # -------------------------
+
+        else:
+            best_match = find_best_match(
+                space_id=space_id,
+                query=search_query,
+                preferred_source_type=(
+                    preferred_source_type
+                ),
+            )
 
         print("Search query:")
         print(search_query)
@@ -592,9 +683,6 @@ async def whatsapp_webhook(request: Request):
                 "intent": "SEARCH",
                 "search_query": search_query,
                 "found": False,
-                "message": (
-                    "No relevant item found"
-                ),
             }
 
         reply = build_reply_from_item(
@@ -656,6 +744,7 @@ async def whatsapp_webhook(request: Request):
             "intent": "SEARCH",
             "search_query": search_query,
             "found": True,
+            "rag": False,
             "result": best_match,
             "reply": reply,
         }

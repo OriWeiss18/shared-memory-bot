@@ -1,6 +1,64 @@
 from app.ai import client
 
 
+RAG_QUESTION_TERMS = [
+    "כמה",
+    "מתי",
+    "איך",
+    "למה",
+    "מי",
+    "איזה",
+    "איזו",
+    "אילו",
+    "האם",
+    "באיזה",
+    "באיזו",
+    "מה ",
+    "what",
+    "how",
+    "when",
+    "why",
+    "who",
+    "which",
+]
+
+DIRECT_RETURN_TERMS = [
+    "תשלח",
+    "תשלחי",
+    "שלח לי",
+    "שלחי לי",
+    "תביא",
+    "תביאי",
+    "תראה",
+    "תראי",
+    "תחזיר",
+    "תחזירי",
+    "קישור",
+    "לינק",
+    "תמונה",
+    "צילום",
+    "send me",
+    "show me",
+    "give me",
+]
+
+
+def should_use_rag(text: str) -> bool:
+    lowered = text.lower().strip()
+
+    if any(term in lowered for term in DIRECT_RETURN_TERMS):
+        return False
+
+    if "?" in lowered:
+        return True
+
+    return any(
+        lowered.startswith(term)
+        or f" {term}" in lowered
+        for term in RAG_QUESTION_TERMS
+    )
+
+
 def build_item_context(item: dict) -> str:
     """
     Convert a saved item into text that can be used
@@ -119,7 +177,7 @@ Answer:
 """
 
     response = client.models.generate_content(
-        model="gemini-3.6-flash",
+        model="gemini-3.1-flash-lite",
         contents=prompt,
     )
 
