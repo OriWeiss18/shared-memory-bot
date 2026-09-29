@@ -24,6 +24,10 @@ from app.repository import (
     get_item_by_message_id,
     save_url_item,
     join_space_by_code,
+    create_space,
+    get_active_space_details,
+    list_user_spaces,
+    switch_space_by_code,
     list_items_for_space,
     get_item_by_id,
 )
@@ -303,6 +307,288 @@ async def whatsapp_webhook(request: Request):
     # From here onward we are handling text messages only.
     message = text_message
     text = message["text"].strip()
+
+    # -------------------------
+    # ACTIVE SPACE
+    # -------------------------
+
+    if text.lower() == "/space":
+        user = get_or_create_user(
+            message["sender"]
+        )
+
+        space = get_active_space_details(
+            user["id"]
+        )
+
+        notification_sent = True
+
+        try:
+            send_text_message(
+                to=message["sender"],
+                text=(
+                    f"המרחב הפעיל שלך:\n"
+                    f"{space['name']} ✅"
+                ),
+            )
+
+        except Exception as send_error:
+            notification_sent = False
+
+            print(
+                "Could not send active-space response:"
+            )
+            print(send_error)
+
+        return {
+            "status": "ok",
+            "action": "show_active_space",
+            "space_id": space["id"],
+            "space_name": space["name"],
+            "notification_sent": notification_sent,
+        }
+
+    # -------------------------
+    # SPACE INVITE CODE
+    # -------------------------
+
+    if text.lower() == "/invite":
+        user = get_or_create_user(
+            message["sender"]
+        )
+
+        space = get_active_space_details(
+            user["id"]
+        )
+
+        notification_sent = True
+
+        try:
+            send_text_message(
+                to=message["sender"],
+                text=(
+                    f"קוד ההזמנה למרחב "
+                    f"{space['name']}:\n"
+                    f"{space['invite_code']}"
+                ),
+            )
+
+        except Exception as send_error:
+            notification_sent = False
+
+            print(
+                "Could not send invite-code response:"
+            )
+            print(send_error)
+
+        return {
+            "status": "ok",
+            "action": "show_invite_code",
+            "space_id": space["id"],
+            "space_name": space["name"],
+            "invite_code": space["invite_code"],
+            "notification_sent": notification_sent,
+        }
+
+    # -------------------------
+    # LIST USER SPACES
+    # -------------------------
+
+    if text.lower() == "/spaces":
+        user = get_or_create_user(
+            message["sender"]
+        )
+
+        spaces = list_user_spaces(
+            user["id"]
+        )
+
+        lines = ["המרחבים שלך:"]
+
+        for space in spaces:
+            marker = " ✅" if space["is_active"] else ""
+
+            lines.append(
+                f"• {space['name']}{marker}"
+                f" ({space['role']})"
+            )
+
+        notification_sent = True
+
+        try:
+            send_text_message(
+                to=message["sender"],
+                text="\n".join(lines),
+            )
+
+        except Exception as send_error:
+            notification_sent = False
+
+            print(
+                "Could not send spaces response:"
+            )
+            print(send_error)
+
+        return {
+            "status": "ok",
+            "action": "list_spaces",
+            "spaces": spaces,
+            "notification_sent": notification_sent,
+        }
+
+    # -------------------------
+    # SWITCH ACTIVE SPACE
+    # -------------------------
+
+    if text.lower() == "/switch":
+        notification_sent = True
+
+        try:
+            send_text_message(
+                to=message["sender"],
+                text=(
+                    "כדי לעבור למרחב אחר, כתבי:\n"
+                    "/switch קוד_הזמנה"
+                ),
+            )
+
+        except Exception as send_error:
+            notification_sent = False
+
+            print(
+                "Could not send switch usage response:"
+            )
+            print(send_error)
+
+        return {
+            "status": "ok",
+            "action": "switch_space",
+            "switched": False,
+            "reason": "missing_code",
+            "notification_sent": notification_sent,
+        }
+
+    if text.lower().startswith("/switch "):
+        invite_code = text.split(
+            maxsplit=1
+        )[1].strip()
+
+        user = get_or_create_user(
+            message["sender"]
+        )
+
+        result = switch_space_by_code(
+            user_id=user["id"],
+            invite_code=invite_code,
+        )
+
+        notification_sent = True
+
+        if result["status"] == "not_found":
+            response_text = "קוד המרחב לא נמצא."
+
+        elif result["status"] == "not_member":
+            response_text = (
+                "את עדיין לא חברה במרחב הזה.\n"
+                "השתמשי ב-/join כדי להצטרף."
+            )
+
+        else:
+            space = result["space"]
+
+            response_text = (
+                f"המרחב הפעיל הוחלף ✅\n"
+                f"{space['name']}"
+            )
+
+        try:
+            send_text_message(
+                to=message["sender"],
+                text=response_text,
+            )
+
+        except Exception as send_error:
+            notification_sent = False
+
+            print(
+                "Could not send switch-space response:"
+            )
+            print(send_error)
+
+        return {
+            "status": "ok",
+            "action": "switch_space",
+            "switched": result["status"] == "ok",
+            "result": result["status"],
+            "space_id": (
+                result.get("space", {}).get("id")
+            ),
+            "notification_sent": notification_sent,
+        }
+
+    # -------------------------
+    # CREATE SHARED SPACE
+    # -------------------------
+
+    if text.lower() == "/create":
+        send_text_message(
+            to=message["sender"],
+            text=(
+                "כדי ליצור מרחב חדש, כתבי:\n"
+                "/create שם המרחב"
+            ),
+        )
+
+        return {
+            "status": "ok",
+            "action": "create_space",
+            "created": False,
+            "reason": "missing_name",
+        }
+
+    if text.lower().startswith("/create "):
+        space_name = text.split(
+            maxsplit=1
+        )[1].strip()
+
+        user = get_or_create_user(
+            message["sender"]
+        )
+
+        space = create_space(
+            user_id=user["id"],
+            name=space_name,
+        )
+
+        notification_sent = True
+
+        try:
+            send_text_message(
+                to=message["sender"],
+                text=(
+                    f"נוצר מרחב חדש ✅\n"
+                    f"{space['name']}\n\n"
+                    f"קוד הזמנה: {space['invite_code']}\n"
+                    f"המרחב הוגדר כפעיל."
+                ),
+            )
+
+        except Exception as send_error:
+            notification_sent = False
+
+            print(
+                "Could not send create-space confirmation:"
+            )
+            print(send_error)
+
+        return {
+            "status": "ok",
+            "action": "create_space",
+            "created": True,
+            "space_id": space["id"],
+            "invite_code": space["invite_code"],
+            "notification_sent": notification_sent,
+        }
 
     # -------------------------
     # JOIN SHARED SPACE

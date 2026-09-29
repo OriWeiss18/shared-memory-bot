@@ -1,5 +1,34 @@
+import secrets
+import string
+
 from app.database import supabase
 from app.embeddings import build_item_search_text, generate_item_embedding
+
+
+def generate_unique_invite_code(length: int = 6):
+    alphabet = string.ascii_uppercase + string.digits
+
+    for _ in range(20):
+        code = "".join(
+            secrets.choice(alphabet)
+            for _ in range(length)
+        )
+
+        response = (
+            supabase.table("spaces")
+            .select("id")
+            .eq("invite_code", code)
+            .limit(1)
+            .execute()
+        )
+
+        if not response.data:
+            return code
+
+    raise RuntimeError(
+        "Could not generate a unique invite code"
+    )
+
 
 def get_or_create_user(whatsapp_number: str):
     # Try to find an existing user
@@ -76,6 +105,7 @@ def get_or_create_space(user_id: str):
         supabase.table("spaces")
         .insert({
             "name": "My Shared Memory",
+            "invite_code": generate_unique_invite_code(),
         })
         .execute()
     )
@@ -93,6 +123,130 @@ def get_or_create_space(user_id: str):
     }).eq("id", user_id).execute()
 
     return space_id
+
+
+def get_active_space_details(user_id: str):
+    space_id = get_or_create_space(user_id)
+
+    response = (
+        supabase.table("spaces")
+        .select("id,name,invite_code")
+        .eq("id", space_id)
+        .single()
+        .execute()
+    )
+
+    space = response.data
+
+    if not space.get("invite_code"):
+        invite_code = generate_unique_invite_code()
+
+        (
+            supabase.table("spaces")
+            .update({
+                "invite_code": invite_code,
+            })
+            .eq("id", space_id)
+            .execute()
+        )
+
+        space["invite_code"] = invite_code
+
+    return space
+
+
+def list_user_spaces(user_id: str):
+    user_response = (
+        supabase.table("app_users")
+        .select("active_space_id")
+        .eq("id", user_id)
+        .single()
+        .execute()
+    )
+
+    active_space_id = user_response.data.get(
+        "active_space_id"
+    )
+
+    memberships = (
+        supabase.table("space_members")
+        .select("space_id,role")
+        .eq("user_id", user_id)
+        .order("joined_at")
+        .execute()
+    ).data
+
+    spaces = []
+
+    for membership in memberships:
+        space_response = (
+            supabase.table("spaces")
+            .select("id,name,invite_code")
+            .eq("id", membership["space_id"])
+            .single()
+            .execute()
+        )
+
+        space = space_response.data
+
+        spaces.append({
+            "id": space["id"],
+            "name": space["name"],
+            "invite_code": space.get("invite_code"),
+            "role": membership["role"],
+            "is_active": (
+                space["id"] == active_space_id
+            ),
+        })
+
+    return spaces
+
+
+def switch_space_by_code(
+    user_id: str,
+    invite_code: str,
+):
+    normalized_code = invite_code.strip().upper()
+
+    space_response = (
+        supabase.table("spaces")
+        .select("id,name,invite_code")
+        .eq("invite_code", normalized_code)
+        .limit(1)
+        .execute()
+    )
+
+    if not space_response.data:
+        return {
+            "status": "not_found",
+        }
+
+    space = space_response.data[0]
+
+    membership = (
+        supabase.table("space_members")
+        .select("space_id")
+        .eq("user_id", user_id)
+        .eq("space_id", space["id"])
+        .limit(1)
+        .execute()
+    )
+
+    if not membership.data:
+        return {
+            "status": "not_member",
+            "space": space,
+        }
+
+    set_active_space(
+        user_id=user_id,
+        space_id=space["id"],
+    )
+
+    return {
+        "status": "ok",
+        "space": space,
+    }
 
 
 def get_item_by_message_id(message_id: str):
@@ -348,6 +502,40 @@ def set_active_space(
     )
 
     return response.data[0]
+
+
+def create_space(
+    user_id: str,
+    name: str,
+):
+    clean_name = name.strip()
+
+    if not clean_name:
+        raise ValueError("Space name cannot be empty")
+
+    space_response = (
+        supabase.table("spaces")
+        .insert({
+            "name": clean_name,
+            "invite_code": generate_unique_invite_code(),
+        })
+        .execute()
+    )
+
+    space = space_response.data[0]
+
+    add_user_to_space(
+        user_id=user_id,
+        space_id=space["id"],
+        role="owner",
+    )
+
+    set_active_space(
+        user_id=user_id,
+        space_id=space["id"],
+    )
+
+    return space
 
 
 def join_space_by_code(
