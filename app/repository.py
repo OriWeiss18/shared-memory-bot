@@ -385,3 +385,66 @@ def join_space_by_code(
     )
 
     return space
+
+
+def list_items_for_space(
+    space_id: str,
+):
+    response = (
+        supabase.table("items")
+        .select(
+            "id,"
+            "source_type,"
+            "original_text,"
+            "original_url,"
+            "storage_path,"
+            "mime_type,"
+            "title,"
+            "summary,"
+            "category,"
+            "tags,"
+            "extracted_text,"
+            "image_description,"
+            "created_at"
+        )
+        .eq("space_id", space_id)
+        .eq("processing_status", "processed")
+        .order("created_at", desc=True)
+        .execute()
+    )
+
+    items = response.data
+
+    for item in items:
+        if (
+            item.get("source_type") == "image"
+            and item.get("storage_path")
+        ):
+            item["image_url"] = (
+                f"/api/items/{item['id']}/image"
+            )
+
+    return items
+
+
+def get_item_by_id(
+    item_id: str,
+):
+    response = (
+        supabase.table("items")
+        .select(
+            "id,"
+            "space_id,"
+            "source_type,"
+            "storage_path,"
+            "mime_type"
+        )
+        .eq("id", item_id)
+        .limit(1)
+        .execute()
+    )
+
+    if response.data:
+        return response.data[0]
+
+    return None

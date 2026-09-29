@@ -2,7 +2,7 @@ import os
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 
 from app.ai import (
     classify_intent,
@@ -24,6 +24,8 @@ from app.repository import (
     get_item_by_message_id,
     save_url_item,
     join_space_by_code,
+    list_items_for_space,
+    get_item_by_id,
 )
 from app.rag import answer_from_items, should_use_rag
 from app.retrieval import build_reply_from_item
@@ -66,6 +68,7 @@ app.mount(
 load_dotenv()
 
 WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
+DASHBOARD_SPACE_ID = os.getenv("DASHBOARD_SPACE_ID")
 
 
 @app.get("/")
@@ -85,6 +88,54 @@ def health():
 def dashboard():
     return FileResponse(
         WEB_DIR / "index.html"
+    )
+
+
+@app.get("/api/items")
+def dashboard_items():
+    if not DASHBOARD_SPACE_ID:
+        return {
+            "error": "DASHBOARD_SPACE_ID is not configured"
+        }
+
+    return list_items_for_space(
+        DASHBOARD_SPACE_ID
+    )
+
+
+@app.get("/api/items/{item_id}/image")
+def dashboard_item_image(
+    item_id: str,
+):
+    if not DASHBOARD_SPACE_ID:
+        return Response(
+            status_code=500
+        )
+
+    item = get_item_by_id(
+        item_id
+    )
+
+    if (
+        item is None
+        or item.get("space_id") != DASHBOARD_SPACE_ID
+        or item.get("source_type") != "image"
+        or not item.get("storage_path")
+    ):
+        return Response(
+            status_code=404
+        )
+
+    image_bytes = download_image(
+        item["storage_path"]
+    )
+
+    return Response(
+        content=image_bytes,
+        media_type=(
+            item.get("mime_type")
+            or "application/octet-stream"
+        ),
     )
 
 
