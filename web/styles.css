@@ -108,29 +108,18 @@ a {
     text-decoration: none;
 }
 
-.brand-mark {
-    width: 44px;
-    height: 44px;
+.brand-logo {
+    width: 52px;
+    height: 52px;
 
-    display: grid;
-    place-items: center;
+    object-fit: cover;
 
     border-radius: 14px;
 
-    background:
-        linear-gradient(
-            135deg,
-            #765ee8,
-            #5747c8
-        );
-
-    color: white;
-
-    font-size: 20px;
-    font-weight: 800;
+    background: white;
 
     box-shadow:
-        0 8px 20px rgba(104, 87, 217, 0.25);
+        0 6px 18px rgba(35, 75, 190, 0.12);
 }
 
 .brand-text {
@@ -140,7 +129,7 @@ a {
 }
 
 .brand-name {
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 800;
 }
 
@@ -222,15 +211,15 @@ a {
 .hero h1 {
     margin: 0;
 
-    font-size: clamp(
-        36px,
-        5vw,
-        58px
+   font-size: clamp(
+        28px,
+        3.6vw,
+        44px
     );
 
-    line-height: 1.05;
+    line-height: 1.08;
 
-    letter-spacing: -0.04em;
+    letter-spacing: -0.03em;
 }
 
 .hero-description {
@@ -981,6 +970,11 @@ a {
             16px;
     }
 
+    .brand-logo {
+        width: 44px;
+        height: 44px;
+    }
+
     .brand-subtitle {
         display: none;
     }
@@ -1001,7 +995,7 @@ a {
     }
 
     .hero h1 {
-        font-size: 38px;
+        font-size: 34px;
     }
 
     .hero-description {
