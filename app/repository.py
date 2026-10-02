@@ -504,6 +504,22 @@ def set_active_space(
     return response.data[0]
 
 
+def user_is_member_of_space(
+    user_id: str,
+    space_id: str,
+):
+    response = (
+        supabase.table("space_members")
+        .select("space_id")
+        .eq("user_id", user_id)
+        .eq("space_id", space_id)
+        .limit(1)
+        .execute()
+    )
+
+    return bool(response.data)
+
+
 def create_space(
     user_id: str,
     name: str,

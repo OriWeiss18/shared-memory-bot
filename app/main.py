@@ -28,6 +28,7 @@ from app.repository import (
     get_active_space_details,
     list_user_spaces,
     switch_space_by_code,
+    user_is_member_of_space,
     list_items_for_space,
     get_item_by_id,
 )
@@ -73,6 +74,7 @@ load_dotenv()
 
 WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
 DASHBOARD_SPACE_ID = os.getenv("DASHBOARD_SPACE_ID")
+DASHBOARD_USER_ID = os.getenv("DASHBOARD_USER_ID")
 
 
 @app.get("/")
@@ -95,15 +97,42 @@ def dashboard():
     )
 
 
-@app.get("/api/items")
-def dashboard_items():
-    if not DASHBOARD_SPACE_ID:
+@app.get("/api/spaces")
+def dashboard_spaces():
+    if not DASHBOARD_USER_ID:
         return {
-            "error": "DASHBOARD_SPACE_ID is not configured"
+            "error": "DASHBOARD_USER_ID is not configured"
         }
 
+    return list_user_spaces(
+        DASHBOARD_USER_ID
+    )
+
+
+@app.get("/api/items")
+def dashboard_items(
+    space_id: str | None = None,
+):
+    if not DASHBOARD_USER_ID:
+        return {
+            "error": "DASHBOARD_USER_ID is not configured"
+        }
+
+    target_space_id = (
+        space_id
+        or get_or_create_space(DASHBOARD_USER_ID)
+    )
+
+    if not user_is_member_of_space(
+        DASHBOARD_USER_ID,
+        target_space_id,
+    ):
+        return Response(
+            status_code=403
+        )
+
     return list_items_for_space(
-        DASHBOARD_SPACE_ID
+        target_space_id
     )
 
 
@@ -111,7 +140,7 @@ def dashboard_items():
 def dashboard_item_image(
     item_id: str,
 ):
-    if not DASHBOARD_SPACE_ID:
+    if not DASHBOARD_USER_ID:
         return Response(
             status_code=500
         )
@@ -122,9 +151,16 @@ def dashboard_item_image(
 
     if (
         item is None
-        or item.get("space_id") != DASHBOARD_SPACE_ID
         or item.get("source_type") != "image"
         or not item.get("storage_path")
+    ):
+        return Response(
+            status_code=404
+        )
+
+    if not user_is_member_of_space(
+        DASHBOARD_USER_ID,
+        item["space_id"],
     ):
         return Response(
             status_code=404

@@ -36,6 +36,7 @@ const SOURCE_ICONS = {
 let allItems = [];
 let selectedCategory = "All";
 let searchTerm = "";
+let selectedSpaceId = null;
 
 
 /* =========================
@@ -85,16 +86,62 @@ const modalContent = document.getElementById(
     "modalContent"
 );
 
+const spaceSelector = document.getElementById(
+    "spaceSelector"
+);
+
 
 /* =========================
    INITIAL LOAD
 ========================== */
 
+async function loadSpaces() {
+    const response = await fetch(
+        "/api/spaces"
+    );
+
+    if (!response.ok) {
+        throw new Error(
+            `Could not load spaces: ${response.status}`
+        );
+    }
+
+    const spaces = await response.json();
+
+    spaceSelector.innerHTML = "";
+
+    spaces.forEach((space) => {
+        const option = document.createElement("option");
+
+        option.value = space.id;
+        option.textContent = space.name;
+
+        if (space.is_active) {
+            selectedSpaceId = space.id;
+        }
+
+        spaceSelector.appendChild(option);
+    });
+
+    if (
+        !selectedSpaceId &&
+        spaces.length > 0
+    ) {
+        selectedSpaceId = spaces[0].id;
+    }
+
+    if (selectedSpaceId) {
+        spaceSelector.value = selectedSpaceId;
+    }
+}
+
 async function loadItems() {
     try {
-        const response = await fetch(
-            "/api/items"
-        );
+        const url = selectedSpaceId
+            ? `/api/items?space_id=${encodeURIComponent(selectedSpaceId)}`
+            : "/api/items";
+
+        const response = await fetch(url);
 
         if (!response.ok) {
             throw new Error(
@@ -781,6 +828,22 @@ function getSafeUrl(value) {
    EVENTS
 ========================== */
 
+spaceSelector.addEventListener(
+    "change",
+    async (event) => {
+        selectedSpaceId = event.target.value;
+
+        selectedCategory = "All";
+        searchTerm = "";
+
+        searchInput.value = "";
+        clearSearch.hidden = true;
+
+        await loadItems();
+    }
+);
+
+
 searchInput.addEventListener(
     "input",
     (event) => {
@@ -853,4 +916,13 @@ document.addEventListener(
    START
 ========================== */
 
-loadItems();
+async function startDashboard() {
+    try {
+        await loadSpaces();
+        await loadItems();
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+startDashboard();
