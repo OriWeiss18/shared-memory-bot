@@ -38,6 +38,10 @@ let selectedCategory = "All";
 let searchTerm = "";
 let selectedSpaceId = null;
 
+const dashboardToken = new URLSearchParams(
+    window.location.search
+).get("token");
+
 
 /* =========================
    DOM
@@ -96,8 +100,14 @@ const spaceSelector = document.getElementById(
 ========================== */
 
 async function loadSpaces() {
+    if (!dashboardToken) {
+        throw new Error(
+            "Dashboard token is missing"
+        );
+    }
+
     const response = await fetch(
-        "/api/spaces"
+        `/api/spaces?token=${encodeURIComponent(dashboardToken)}`
     );
 
     if (!response.ok) {
@@ -137,11 +147,23 @@ async function loadSpaces() {
 
 async function loadItems() {
     try {
-        const url = selectedSpaceId
-            ? `/api/items?space_id=${encodeURIComponent(selectedSpaceId)}`
-            : "/api/items";
+        const params = new URLSearchParams();
 
-        const response = await fetch(url);
+        params.set(
+            "token",
+            dashboardToken
+        );
+
+        if (selectedSpaceId) {
+            params.set(
+                "space_id",
+                selectedSpaceId
+            );
+        }
+
+        const response = await fetch(
+            `/api/items?${params.toString()}`
+        );
 
         if (!response.ok) {
             throw new Error(
@@ -421,7 +443,8 @@ function createImagePreview(item) {
     if (item.image_url) {
         const image = document.createElement("img");
 
-        image.src = item.image_url;
+        image.src =
+            `${item.image_url}?token=${encodeURIComponent(dashboardToken)}`;
         image.alt = item.title || "תמונה שמורה";
 
         image.addEventListener("error", () => {
@@ -629,7 +652,8 @@ function createModalVisual(item) {
     if (item.image_url) {
         const image = document.createElement("img");
 
-        image.src = item.image_url;
+        image.src =
+            `${item.image_url}?token=${encodeURIComponent(dashboardToken)}`;
         image.alt = item.title || "תמונה שמורה";
 
         image.addEventListener("error", () => {

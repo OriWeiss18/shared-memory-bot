@@ -32,6 +32,10 @@ from app.repository import (
     list_items_for_space,
     get_item_by_id,
 )
+from app.dashboard_auth import (
+    create_dashboard_token,
+    verify_dashboard_token,
+)
 from app.rag import answer_from_items, should_use_rag
 from app.retrieval import build_reply_from_item
 from app.search import (
@@ -75,6 +79,9 @@ load_dotenv()
 WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
 DASHBOARD_SPACE_ID = os.getenv("DASHBOARD_SPACE_ID")
 DASHBOARD_USER_ID = os.getenv("DASHBOARD_USER_ID")
+DASHBOARD_PUBLIC_URL = os.getenv(
+    "DASHBOARD_PUBLIC_URL"
+)
 
 
 @app.get("/")
@@ -98,33 +105,44 @@ def dashboard():
 
 
 @app.get("/api/spaces")
-def dashboard_spaces():
-    if not DASHBOARD_USER_ID:
-        return {
-            "error": "DASHBOARD_USER_ID is not configured"
-        }
+def dashboard_spaces(
+    token: str,
+):
+    user_id = verify_dashboard_token(
+        token
+    )
+
+    if not user_id:
+        return Response(
+            status_code=401
+        )
 
     return list_user_spaces(
-        DASHBOARD_USER_ID
+        user_id
     )
 
 
 @app.get("/api/items")
 def dashboard_items(
+    token: str,
     space_id: str | None = None,
 ):
-    if not DASHBOARD_USER_ID:
-        return {
-            "error": "DASHBOARD_USER_ID is not configured"
-        }
+    user_id = verify_dashboard_token(
+        token
+    )
+
+    if not user_id:
+        return Response(
+            status_code=401
+        )
 
     target_space_id = (
         space_id
-        or get_or_create_space(DASHBOARD_USER_ID)
+        or get_or_create_space(user_id)
     )
 
     if not user_is_member_of_space(
-        DASHBOARD_USER_ID,
+        user_id,
         target_space_id,
     ):
         return Response(
@@ -139,10 +157,15 @@ def dashboard_items(
 @app.get("/api/items/{item_id}/image")
 def dashboard_item_image(
     item_id: str,
+    token: str,
 ):
-    if not DASHBOARD_USER_ID:
+    user_id = verify_dashboard_token(
+        token
+    )
+
+    if not user_id:
         return Response(
-            status_code=500
+            status_code=401
         )
 
     item = get_item_by_id(
@@ -159,7 +182,7 @@ def dashboard_item_image(
         )
 
     if not user_is_member_of_space(
-        DASHBOARD_USER_ID,
+        user_id,
         item["space_id"],
     ):
         return Response(
@@ -343,6 +366,60 @@ async def whatsapp_webhook(request: Request):
     # From here onward we are handling text messages only.
     message = text_message
     text = message["text"].strip()
+
+    # -------------------------
+    # DASHBOARD LINK
+    # -------------------------
+
+    if text.lower() == "/dashboard":
+        user = get_or_create_user(
+            message["sender"]
+        )
+
+        if not DASHBOARD_PUBLIC_URL:
+            send_text_message(
+                to=message["sender"],
+                text="הדשבורד אינו זמין כרגע.",
+            )
+
+            return {
+                "status": "ok",
+                "action": "dashboard_link",
+                "available": False,
+            }
+
+        token = create_dashboard_token(
+            user["id"]
+        )
+
+        dashboard_url = (
+            f"{DASHBOARD_PUBLIC_URL}"
+            f"?token={token}"
+        )
+
+        notification_sent = True
+
+        try:
+            send_text_message(
+                to=message["sender"],
+                text=(
+                    "הדשבורד שלך ב-Keeper 📚\n"
+                    "לצפייה במרחבים ובפריטים השמורים:\n"
+                    f"{dashboard_url}"
+                ),
+            )
+
+        except Exception as send_error:
+            notification_sent = False
+            print("Could not send dashboard link:")
+            print(send_error)
+
+        return {
+            "status": "ok",
+            "action": "dashboard_link",
+            "available": True,
+            "notification_sent": notification_sent,
+        }
 
     # -------------------------
     # ACTIVE SPACE
