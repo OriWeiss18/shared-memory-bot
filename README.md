@@ -111,7 +111,7 @@ Stored item: **"Wedding flower arrangement inspiration"**
 |---|---:|---|
 | `תמונה של זר ` | 0.525 | Rejected |
 | `תמונת זר הפרחים לכלה` | 0.652 | Retrieved |
-| `תמונת הפרחים לחתונה` | 0.622 | Retrieved |
+| `השראה לסידור פרחים לחתונה` | 0.673 | Retrieved |
 
 This threshold prevents the system from returning the closest result when the semantic match is still too weak.
 
