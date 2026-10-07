@@ -26,7 +26,7 @@ Keeper is an intelligent shared-memory assistant that lets multiple users save a
 - **Retrieving information** — Users can request a specific item using a natural-language message.
 - **Asking the memory** — Broader questions can be answered using relevant information already stored in the shared memory.
 - **Shared interaction** — Multiple users can contribute to and retrieve information from the same memory space.
-- **Separate memory spaces** — Users can create different spaces, with saving and retrieval organized within the currently active space
+- **Separate memory spaces** — Users can create different spaces, with saving and retrieval organized within the currently active space.
 - **Browsing stored content** — The web dashboard provides an additional visual interface for exploring the saved information.
 
 ### 2.2 High-Level System Flow
@@ -67,7 +67,7 @@ Each SAVE request follows a type-specific processing flow before being normalize
 - **URLs** — The page is fetched, cleaned from irrelevant HTML elements, and reduced to its main content before metadata generation.
 - **Images** — Gemini Vision generates a visual description and extracts visible text, while the original image is uploaded to Supabase Storage.
 - **Unified representation** — The original or extracted content and generated metadata are combined into a common searchable representation for all content types.
-- **Embedding & storage** — The representation is encoded as a 768-dimensional document embedding and stored with the structured item data in Supabase and the active space.
+- **Embedding & storage** — The representation is encoded as a 768-dimensional document embedding and stored with the structured item data in Supabase, associated with the user's active space.
 
 
 #### Save Pipeline
@@ -127,7 +127,7 @@ Stored item: **"Wedding flower arrangement inspiration"**
 
 | Query | Similarity | Decision |
 |---|---:|---|
-| `תמונה של זר ` | 0.525 | Rejected |
+| `תמונה של זר` | 0.525 | Rejected |
 | `תמונת זר הפרחים לכלה` | 0.652 | Retrieved |
 | `השראה לסידור פרחים לחתונה` | 0.673 | Retrieved |
 
@@ -199,21 +199,23 @@ The Web Dashboard provides a web-based view of the same shared memory used throu
 - **Local filtering** — Search and category filters are applied in the frontend to the items already loaded for the selected space.
 - **Item details** — Individual items can be opened to display their original content, metadata, links, or stored images.
 
-### 3.7 Technical Design Choices & Iterative Refinement
+### 3.7 Engineering Decisions & Lessons Learned
 
-Several implementation choices were refined through testing and comparison of alternatives. This led to explicit technical decisions across the embedding, retrieval, RAG, reliability, and access-control layers.
+Several parts of the architecture were refined through testing rather than fixed from the beginning. The main engineering decisions were:
 
-- **Embedding Dimensionality & Search Representation** — We tested a higher-dimensional embedding configuration before choosing 768 dimensions as a better balance between retrieval quality, vector-storage size, and similarity-computation cost in `pgvector`. We also found that retrieval quality depended strongly on the embedded content itself, so each representation combines the title, category, tags, summary, and original or extracted content rather than relying on raw text alone.
+- **Embedding configuration & representation** — We tested a higher-dimensional embedding configuration before choosing 768 dimensions as a practical balance between retrieval quality, vector-storage size, and similarity-computation cost. Testing also showed that embedding enriched representations produced better retrieval than relying only on raw content.
 
-- **Prompt Engineering & Hallucination Control** — The prompts were iteratively refined through testing to make AI outputs more stable and predictable. We added stricter JSON structures, controlled categories and tags, language-preservation rules, and explicit grounding instructions to reduce malformed outputs and prevent the model from introducing information that was not supported by the stored memory.
+- **Deterministic logic where possible** — Not every decision requires an LLM. Commands and recognizable URLs are handled directly in code, while Gemini is used mainly for ambiguous natural-language tasks. AI outputs are also validated and cleaned before entering the pipeline.
 
-- **Deterministic Processing & Imperfect LLM Output** — We deliberately avoided using the LLM for decisions that can be made reliably in code. Commands and recognizable URLs are handled deterministically, while Gemini is reserved for ambiguous natural-language input, with rule-based fallback when classification fails. AI outputs are also validated and cleaned before entering the pipeline to handle formatting deviations such as unexpected Markdown around JSON.
+- **Rejecting weak matches instead of always returning something** — Testing showed that the mathematically closest vector may still be irrelevant. This led to the introduction of the `0.62` similarity threshold and candidate evaluation before accepting a result.
 
-- **Candidate Retrieval, Ranking & Similarity Threshold** — A simple semantic-search implementation could return the single nearest vector, but the nearest stored item is not necessarily relevant enough to answer the user's request. We therefore retrieve a candidate set first, then apply source-type refinement and similarity evaluation before selecting the final result. Direct retrieval considers up to 10 candidates, and an application-level `MIN_SIMILARITY` threshold of `0.62` rejects weak matches instead of forcing the system to return something simply because it is mathematically closest.
+- **Keeping RAG context focused** — Passing too many retrieved items can introduce irrelevant information into the prompt. Keeper therefore limits the RAG context to a small number of high-confidence results, with at most three items used for answer generation.
 
-- **Bounded & Source-Aware RAG Context** — We chose to keep the RAG context small and focused, using at most three relevant items rather than passing every retrieved result to Gemini. This reduces context noise and prevents weaker matches from influencing the generated answer. The context is also built according to source type, so each item contributes the information most useful for reasoning: original text, extracted webpage content, or image description and visible text.
+- **Prompt refinement & grounding** — Prompts were iteratively adjusted to produce more predictable structured outputs and to keep generated answers grounded in the stored memory rather than unsupported model knowledge.
 
-- **Bounded Retries & Idempotent Webhook Processing** — Testing showed that temporary external-service failures and repeated webhook deliveries had to be handled explicitly rather than treated as rare edge cases. We therefore refined the flow to retry transient Gemini Vision failures with bounded exponential backoff, while WhatsApp messages are processed idempotently by checking each message identifier before processing to prevent duplicate memory items.
+- **Designing for external-service failures** — Real testing exposed temporary Gemini failures, repeated WhatsApp webhook deliveries, and failed outbound responses. These cases led to bounded retries, fallback behavior, and duplicate-message detection so that temporary failures do not unnecessarily break the entire flow.
+
+This iterative process showed that reliable AI-based systems require control mechanisms around the model, rather than relying on model output alone.
 
 
 ## 4. Demonstration
@@ -306,4 +308,11 @@ Future development could extend Keeper in several directions:
 
 ## 6. Summary & Conclusions
 
-Keeper demonstrates how a familiar messaging interface can be extended into a structured, multimodal memory system through the combination of semantic retrieval, RAG, and shared data management. A key engineering insight from the project was that reliable retrieval requires more than simply adding embeddings or an LLM: the final system combines enriched semantic representations, candidate filtering, relevance thresholds, source-aware context construction, and deterministic logic where AI is unnecessary. The implementation was refined through repeated testing of retrieval quality, model behavior, external-service failures, and multi-user flows, leading to a system that is both more accurate and more predictable.
+Keeper demonstrates how a familiar messaging interface can be extended into a structured, multimodal shared-memory system by combining semantic retrieval, RAG, shared data management, and deterministic backend logic.
+
+The main conclusions from the project are:
+
+- **Semantic retrieval requires more than embeddings** — Retrieval quality depends on the searchable representation, candidate ranking, source-aware filtering, and a relevance threshold that prevents weak matches from being returned.
+- **RAG and Direct Retrieval serve different needs** — Direct Retrieval is more appropriate when the user wants the original saved item, while RAG enables grounded answers when information must be interpreted or combined.
+- **AI works best alongside deterministic logic** — Commands, URL detection, access validation, duplicate prevention, and fallback mechanisms provide reliability and control around the AI-based components.
+- **Iterative testing improved the architecture** — Testing retrieval quality, model behavior, external-service failures, and multi-user flows exposed real failure cases and led to a more accurate and predictable system.
